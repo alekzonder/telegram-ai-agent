@@ -155,6 +155,44 @@ def test_public_start_registers_bot_commands() -> None:
     assert source.index("setup_bot_commands(bot)") < source.index("dp.start_polling")
 
 
+async def test_process_queue_item_passes_topic_config_to_streaming(
+    monkeypatch,
+) -> None:
+    """topic_config must reach send_streaming_response so stream_mode is resolved
+    from topic_config.json instead of defaulting to verbose."""
+    from unittest.mock import MagicMock
+
+    import telegram_bot.__main__ as bot_main
+
+    captured: dict = {}
+
+    async def fake_send(*args, **kwargs) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr(bot_main, "send_streaming_response", fake_send)
+
+    session_manager = MagicMock()
+    session_manager.get_current_session_id.return_value = None
+    session_manager.consume_fresh_start.return_value = False
+    topic_config = MagicMock()
+
+    await bot_main.process_queue_item(
+        (123, 456),
+        "hello",
+        [MagicMock()],
+        None,
+        bot=MagicMock(),
+        session_manager=session_manager,
+        tmux_manager=MagicMock(),
+        topic_config=topic_config,
+    )
+
+    assert captured.get("topic_config") is topic_config, (
+        "topic_config was not forwarded to send_streaming_response; "
+        "stream_mode will always fall back to verbose"
+    )
+
+
 def test_mcp_bot_server_imports() -> None:
     path = Path("mcp-servers/bot/server.py")
     spec = importlib.util.spec_from_file_location("public_bot_mcp_server", path)

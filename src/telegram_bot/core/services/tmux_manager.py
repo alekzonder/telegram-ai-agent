@@ -704,10 +704,15 @@ class TmuxManager:
         else:
             ready = await await_prompt_ready(name, timeout=remaining, clock=time.monotonic)
         if not ready:
-            await asyncio.to_thread(
-                subprocess.run, ["tmux", "kill-session", "-t", f"={name}"], capture_output=True
-            )
-            raise RuntimeError("CC TUI start timeout")
+            still_alive = await asyncio.to_thread(_tmux_alive_fn, name)
+            if still_alive:
+                await asyncio.to_thread(
+                    subprocess.run,
+                    ["tmux", "kill-session", "-t", f"={name}"],
+                    capture_output=True,
+                )
+                raise RuntimeError("CC TUI start timeout")
+            raise RuntimeError("CC TUI start failed: process exited immediately")
 
         # Second readiness gate: the prompt glyph (codex `>` / claude `>` markers) is visible, but
         # is the input handler actually wired up? Codex in particular

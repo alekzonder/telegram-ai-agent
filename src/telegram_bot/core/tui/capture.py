@@ -123,6 +123,12 @@ async def await_prompt_ready(
         try:
             pane = await asyncio.to_thread(_capture_pane, session_name)
         except subprocess.CalledProcessError:
+            last_lines = "\n".join(pane.splitlines()[-10:]) if pane else "<empty>"
+            logger.warning(
+                "TUI_IO: session=%s died during readiness poll. Last pane lines:\n%s",
+                session_name,
+                last_lines,
+            )
             return False
 
         if is_trust_dialog(pane) and not trust_handled:
@@ -140,6 +146,12 @@ async def await_prompt_ready(
     try:
         await asyncio.to_thread(_send_enter, session_name)
     except subprocess.CalledProcessError:
+        last_lines = "\n".join(pane.splitlines()[-10:]) if pane else "<empty>"
+        logger.warning(
+            "TUI_IO: session=%s died at fallback-enter. Last pane lines:\n%s",
+            session_name,
+            last_lines,
+        )
         return False
 
     fallback_deadline = clock() + _FALLBACK_POLL_BUDGET_SEC
@@ -147,6 +159,12 @@ async def await_prompt_ready(
         try:
             pane = await asyncio.to_thread(_capture_pane, session_name)
         except subprocess.CalledProcessError:
+            last_lines = "\n".join(pane.splitlines()[-10:]) if pane else "<empty>"
+            logger.warning(
+                "TUI_IO: session=%s died during fallback poll. Last pane lines:\n%s",
+                session_name,
+                last_lines,
+            )
             return False
         if is_prompt_ready(pane):
             return True

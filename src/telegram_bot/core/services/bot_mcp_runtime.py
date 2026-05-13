@@ -79,7 +79,11 @@ def ensure_bot_runtime_mcp_config(
     from ``channel_key`` and the base config before every tmux respawn.
     """
     base_path = _resolve_base_config(base_mcp_config, runtime_path, project_root)
-    root = _project_root_from_base(base_path, project_root)
+    # Absolute paths only — the agent (claude/codex) runs from the topic cwd,
+    # not the bot's cwd, so any relative path in --mcp-config or the bot
+    # server args resolves against the wrong directory and the spawn fails.
+    root = _project_root_from_base(base_path, project_root).resolve()
+    runtime_path = runtime_path.resolve()
     data = _load_mcp_config(base_path) if base_path is not None else {"mcpServers": {}}
     servers = data.get("mcpServers")
     if not isinstance(servers, dict):
@@ -88,9 +92,15 @@ def ensure_bot_runtime_mcp_config(
 
     raw_bot = servers.get("bot")
     bot_server = dict(raw_bot) if isinstance(raw_bot, dict) else _standard_bot_server(root)
+    # Re-derive the bot server args from the current absolute project root.
+    # The previous write may have been done with a relative project_root and
+    # is now stale; preserving it would re-introduce the same bug after the
+    # config file has been written once.
+    bot_server["command"] = "bash"
+    bot_server["args"] = [str(root / "mcp-servers" / "bot" / "start.sh")]
     raw_env = bot_server.get("env")
     env = dict(raw_env) if isinstance(raw_env, dict) else {}
-    env.setdefault("PROJECT_DIR", str(root))
+    env["PROJECT_DIR"] = str(root)
     env["TELEGRAM_CHAT_ID"] = str(channel_key[0])
     env["TELEGRAM_THREAD_ID"] = "" if channel_key[1] is None else str(channel_key[1])
     env["TELEGRAM_CONTEXT_LOCK"] = "1"

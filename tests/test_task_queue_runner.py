@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
+from unittest.mock import AsyncMock, MagicMock
 
 from telegram_bot.core.services.message_queue import QueueItem
 from telegram_bot.core.services.task_queue import (
@@ -94,7 +91,7 @@ async def test_try_start_next_noop_when_in_progress_exists():
 
 
 async def test_try_start_next_sets_idle_when_queue_empty():
-    runner, beads, _, mq = _make_runner(has_in_progress=False, next_task=None)
+    runner, _beads, _, mq = _make_runner(has_in_progress=False, next_task=None)
 
     await runner.try_start_next(CHANNEL)
 
@@ -117,7 +114,7 @@ async def test_try_start_next_claims_and_enqueues_task():
 
 async def test_try_start_next_prompt_contains_task_id_and_markers():
     task = _task(id_="bd-xyz9", title="Deploy service")
-    runner, beads, _, mq = _make_runner(has_in_progress=False, next_task=task)
+    runner, _beads, _, mq = _make_runner(has_in_progress=False, next_task=task)
 
     await runner.try_start_next(CHANNEL)
 
@@ -182,7 +179,7 @@ async def test_on_item_done_question_heuristic_pauses():
 
 async def test_on_item_done_no_marker_starts_next():
     task = _task()
-    runner, beads, sm, mq = _make_runner(has_in_progress=False, next_task=_task("bd-bbb2", "Do Y"))
+    runner, _, sm, mq = _make_runner(has_in_progress=False, next_task=_task("bd-bbb2", "Do Y"))
     runner._current_task_titles[CHANNEL] = task.title
     sm.get_last_response.return_value = "Completed successfully."
 

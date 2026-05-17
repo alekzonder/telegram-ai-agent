@@ -55,7 +55,7 @@ def test_session_manager_store_and_get_last_response(tmp_path):
 # TaskQueue tests
 # ---------------------------------------------------------------------------
 
-from telegram_bot.core.services.task_queue import Task, TaskQueue, TaskQueueState  # noqa: E402
+from telegram_bot.core.services.task_queue import TaskQueue, TaskQueueState  # noqa: E402
 
 
 def test_task_queue_add_and_list(tmp_path):
@@ -63,7 +63,7 @@ def test_task_queue_add_and_list(tmp_path):
     t1 = q.add("do X", priority=10)
     t2 = q.add("do Y", priority=5)
     tasks = q.list_pending()
-    assert tasks[0].id == t2.id   # lower priority number = first
+    assert tasks[0].id == t2.id  # lower priority number = first
     assert tasks[1].id == t1.id
 
 
@@ -85,7 +85,7 @@ def test_task_queue_clear(tmp_path):
 def test_task_queue_peek_next(tmp_path):
     q = TaskQueue(tmp_path / "q.json")
     assert q.peek_next() is None
-    t1 = q.add("task A", priority=10)
+    q.add("task A", priority=10)
     t2 = q.add("task B", priority=1)
     assert q.peek_next().id == t2.id
 
@@ -139,3 +139,46 @@ def test_task_queue_restart_resets_running_to_pending(tmp_path):
     # Simulate restart
     q2 = TaskQueue(path)
     assert q2.list_pending()[0].status == "pending"
+
+
+# ---------------------------------------------------------------------------
+# Task 5: TopicConfig qmode tests
+# ---------------------------------------------------------------------------
+
+import json
+from telegram_bot.core.services.topic_config import TopicConfig
+
+
+def test_topic_config_parses_qmode(tmp_path):
+    mcp = tmp_path / ".mcp.json"
+    mcp.write_text("{}", encoding="utf-8")
+    path = tmp_path / "topic_config.json"
+    path.write_text(
+        json.dumps({
+            "topics": {
+                "99": {
+                    "name": "T", "type": "assistant", "mode": "free",
+                    "cwd": str(tmp_path), "mcp_config": str(mcp),
+                    "qmode": True,
+                }
+            }
+        }),
+        encoding="utf-8",
+    )
+    topic = TopicConfig(str(path), ".").get_topic(99)
+    assert topic.qmode is True
+
+
+def test_topic_config_qmode_defaults_false(tmp_path):
+    topic = TopicConfig.__new__(TopicConfig)
+    from telegram_bot.core.services.topic_config import _default_topic
+    assert _default_topic().qmode is False
+
+
+async def test_topic_config_update_qmode(tmp_path):
+    path = tmp_path / "topic_config.json"
+    tc = TopicConfig(str(path), ".")
+    ok = await tc.update_qmode(42, True)
+    assert ok
+    data = json.loads(path.read_text())
+    assert data["topics"]["42"]["qmode"] is True

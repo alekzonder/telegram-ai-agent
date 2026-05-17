@@ -82,6 +82,7 @@ class TopicSettings:
     exec_mode: ExecMode = _DEFAULT_EXEC_MODE
     engine: Engine = _DEFAULT_ENGINE
     model: str | None = None
+    qmode: bool = False
 
 
 def _default_topic() -> TopicSettings:
@@ -93,6 +94,7 @@ def _default_topic() -> TopicSettings:
         mcp_config=None,
         stream_mode=_DEFAULT_STREAM_MODE,
         exec_mode=_DEFAULT_EXEC_MODE,
+        qmode=False,
     )
 
 
@@ -269,6 +271,9 @@ class TopicConfig:
                 if isinstance(raw_model, str) and raw_model.strip() and model is None:
                     logger.warning("Invalid model %r for topic %d, dropping", raw_model, thread_id)
 
+                raw_qmode = value.get("qmode", False)
+                qmode = bool(raw_qmode) if isinstance(raw_qmode, bool) else False
+
                 topics[thread_id] = TopicSettings(
                     name=name,
                     type=topic_type,
@@ -279,6 +284,7 @@ class TopicConfig:
                     exec_mode=exec_mode,
                     engine=engine,
                     model=model,
+                    qmode=qmode,
                 )
 
         # Parse routing
@@ -466,6 +472,15 @@ class TopicConfig:
             thread_id=thread_id,
             values={"engine": engine, "model": normalized},
             log_label="update_engine_model",
+        )
+
+    async def update_qmode(self, thread_id: int, enabled: bool) -> bool:
+        """Persist qmode for one topic."""
+        return await self._update_topic_field(
+            thread_id=thread_id,
+            field_name="qmode",
+            value=enabled,
+            log_label="update_qmode",
         )
 
     async def update_engine_model_exec_mode(

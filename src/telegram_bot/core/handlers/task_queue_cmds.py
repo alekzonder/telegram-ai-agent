@@ -21,18 +21,13 @@ def _parse_qadd_text(text: str) -> str:
     return parts[1].strip() if len(parts) > 1 else ""
 
 
-def _get_cwd(session_manager: object, key: tuple) -> str:
-    return session_manager._get_session(key).cwd  # type: ignore[attr-defined]
-
-
 @router.message(Command("qadd"))
 async def handle_qadd(
     message: Message,
     task_queue_runner: TaskQueueRunner,
-    session_manager: object,
 ) -> None:
     key = channel_key(message)
-    cwd = _get_cwd(session_manager, key)
+    cwd = task_queue_runner.get_cwd(key)
 
     raw_text = message.text or message.caption or ""
     task_text = _parse_qadd_text(raw_text)
@@ -80,10 +75,9 @@ async def handle_qmode(
 async def handle_qlist(
     message: Message,
     task_queue_runner: TaskQueueRunner,
-    session_manager: object,
 ) -> None:
     key = channel_key(message)
-    cwd = _get_cwd(session_manager, key)
+    cwd = task_queue_runner.get_cwd(key)
 
     tasks = await task_queue_runner._beads_queue.list_tasks(cwd)
     state = task_queue_runner.get_state(key)
@@ -110,10 +104,9 @@ async def handle_qlist(
 async def handle_qskip(
     message: Message,
     task_queue_runner: TaskQueueRunner,
-    session_manager: object,
 ) -> None:
     key = channel_key(message)
-    cwd = _get_cwd(session_manager, key)
+    cwd = task_queue_runner.get_cwd(key)
 
     task = await task_queue_runner._beads_queue.get_next(cwd)
     if task is None:
@@ -128,10 +121,9 @@ async def handle_qskip(
 async def handle_qclear(
     message: Message,
     task_queue_runner: TaskQueueRunner,
-    session_manager: object,
 ) -> None:
     key = channel_key(message)
-    cwd = _get_cwd(session_manager, key)
+    cwd = task_queue_runner.get_cwd(key)
 
     tasks = await task_queue_runner._beads_queue.list_tasks(cwd)
     open_tasks = [t for t in tasks if t.status == "open"]

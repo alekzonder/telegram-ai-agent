@@ -251,7 +251,7 @@ class TaskQueueRunner:
     def set_state(self, channel_key: object, state: TaskQueueState) -> None:
         self._state[channel_key] = state
 
-    def _get_cwd(self, channel_key: object) -> str:
+    def get_cwd(self, channel_key: object) -> str:
         return self._session_manager._get_session(channel_key).cwd  # type: ignore[attr-defined]
 
     async def _reset_session(self, channel_key: object) -> None:
@@ -285,7 +285,7 @@ class TaskQueueRunner:
         if self.get_state(channel_key) == TaskQueueState.PAUSED_BY_USER:
             return
 
-        cwd = self._get_cwd(channel_key)
+        cwd = self.get_cwd(channel_key)
 
         if await self._beads_queue.has_in_progress(cwd):
             logger.info(
@@ -346,7 +346,7 @@ class TaskQueueRunner:
         if task_id is None:
             return
 
-        cwd = self._get_cwd(channel_key)
+        cwd = self.get_cwd(channel_key)
         response_text: str = self._session_manager.get_last_response(channel_key)  # type: ignore[attr-defined]
         preview = self._current_task_titles.get(channel_key, task_id)[:60]
 

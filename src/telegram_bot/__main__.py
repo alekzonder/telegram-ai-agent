@@ -30,7 +30,7 @@ from telegram_bot.core.middleware.auth import AuthMiddleware
 from telegram_bot.core.services.bot_commands import setup_bot_commands
 from telegram_bot.core.services.claude import SessionManager
 from telegram_bot.core.services.message_queue import MessageQueue
-from telegram_bot.core.services.task_queue import TaskQueue, TaskQueueRunner
+from telegram_bot.core.services.task_queue import BeadsQueue, TaskQueueRunner
 from telegram_bot.core.services.tmux_manager import TmuxManager
 from telegram_bot.core.services.topic_config import TopicConfig
 from telegram_bot.core.services.transcriber import Transcriber
@@ -132,11 +132,10 @@ async def _start() -> None:
             topic_config=topic_config,
         )
 
-    # Task queue: one queue + runner per bot instance (shared across all channels).
-    _task_queue_path = Path(settings.project_root) / ".bot" / "task_queue.json"
-    _task_queue = TaskQueue(_task_queue_path)
+    # Task queue: beads-backed runner (one per bot instance, shared across channels).
+    _beads_queue = BeadsQueue()
     task_queue_runner = TaskQueueRunner(
-        queue=_task_queue,
+        beads_queue=_beads_queue,
         session_manager=session_manager,
         message_queue=None,  # assigned below to break circular dependency  # type: ignore[arg-type]
         bot=bot,

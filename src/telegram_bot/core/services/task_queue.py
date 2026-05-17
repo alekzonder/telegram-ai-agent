@@ -266,10 +266,22 @@ class TaskQueueRunner:
             if not self._qmode_enabled:
                 continue
             for channel_key in list(self._state.keys()):
-                if self.get_state(channel_key) != TaskQueueState.IDLE:
+                state = self.get_state(channel_key)
+                # Explicit user pause — never auto-advance.
+                if state == TaskQueueState.PAUSED_BY_USER:
                     continue
+                # Skip while the message queue is actively processing.
                 if self._message_queue.is_busy(channel_key):  # type: ignore[attr-defined]
                     continue
+                # RUNNING but queue is idle → state got stuck (e.g. exception after
+                # claim_task but before enqueue). Reset so try_start_next can proceed.
+                if state == TaskQueueState.RUNNING:
+                    logger.warning(
+                        "TaskQueueRunner: RUNNING with idle queue, resetting channel=%s",
+                        channel_key,
+                    )
+                    self.set_state(channel_key, TaskQueueState.IDLE)
+                # IDLE or PAUSED_AWAITING_HUMAN with no active processing: try next task.
                 try:
                     await self.try_start_next(channel_key, silent=True)
                 except Exception:

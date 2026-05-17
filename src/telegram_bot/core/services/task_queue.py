@@ -176,6 +176,7 @@ class TaskQueueMessage:
         self._bot = bot
         self._chat_id = chat_id
         self._thread_id = thread_id
+        self.bot = bot  # send_streaming_response reads message.bot for live buffer setup
 
         class _Chat:
             def __init__(self, cid: int) -> None:

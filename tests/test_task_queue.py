@@ -195,3 +195,16 @@ def test_task_manager_prompt_has_markers():
     prompt = Path("src/telegram_bot/prompts/task-manager.md").read_text(encoding="utf-8")
     assert "[TASK_COMPLETE]" in prompt
     assert "[WAITING_FOR_INPUT]" in prompt
+
+
+# ---------------------------------------------------------------------------
+# Task 9: Bot command menu
+# ---------------------------------------------------------------------------
+
+from telegram_bot.core.services.bot_commands import build_bot_commands
+
+
+def test_queue_commands_in_bot_menu():
+    names = {cmd.command for cmd in build_bot_commands("en")}
+    for cmd in ("qmode", "qadd", "qlist", "qskip", "qclear", "qpause", "qresume", "qnext"):
+        assert cmd in names, f"//{cmd} missing from bot menu"

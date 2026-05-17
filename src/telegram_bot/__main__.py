@@ -21,6 +21,7 @@ from telegram_bot.core.handlers.mode import router as mode_router
 from telegram_bot.core.handlers.photo import cleanup_old_tmp_files, ensure_tmp_dir
 from telegram_bot.core.handlers.photo import router as photo_router
 from telegram_bot.core.handlers.streaming import send_streaming_response
+from telegram_bot.core.handlers.task_queue_cmds import router as task_queue_router
 from telegram_bot.core.handlers.text import router as text_router
 from telegram_bot.core.handlers.voice import router as voice_router
 from telegram_bot.core.keyboards import topic_keyboard
@@ -29,6 +30,7 @@ from telegram_bot.core.middleware.auth import AuthMiddleware
 from telegram_bot.core.services.bot_commands import setup_bot_commands
 from telegram_bot.core.services.claude import SessionManager
 from telegram_bot.core.services.message_queue import MessageQueue
+from telegram_bot.core.services.task_queue import TaskQueue, TaskQueueRunner
 from telegram_bot.core.services.tmux_manager import TmuxManager
 from telegram_bot.core.services.topic_config import TopicConfig
 from telegram_bot.core.services.transcriber import Transcriber
@@ -130,7 +132,24 @@ async def _start() -> None:
             topic_config=topic_config,
         )
 
-    message_queue = MessageQueue(bot, session_manager, _process_queue_item)
+    # Task queue: one queue + runner per bot instance (shared across all channels).
+    _task_queue_path = Path(settings.project_root) / ".bot" / "task_queue.json"
+    _task_queue = TaskQueue(_task_queue_path)
+    task_queue_runner = TaskQueueRunner(
+        queue=_task_queue,
+        session_manager=session_manager,
+        message_queue=None,  # assigned below to break circular dependency  # type: ignore[arg-type]
+        bot=bot,
+        qmode_enabled=False,
+    )
+
+    async def _on_item_complete(channel_key: ChannelKey, item: object) -> None:
+        await task_queue_runner.on_item_done(channel_key, item)
+
+    message_queue = MessageQueue(
+        bot, session_manager, _process_queue_item, on_item_complete=_on_item_complete
+    )
+    task_queue_runner._message_queue = message_queue
 
     dp = Dispatcher()
     auth = AuthMiddleware(allowed_user_ids=settings.allowed_user_ids)
@@ -144,6 +163,7 @@ async def _start() -> None:
     # any text/forward handler tries to read mode/cwd for the new thread.
     dp.include_router(forum_topic_router)
     dp.include_router(commands_router)
+    dp.include_router(task_queue_router)
     dp.include_router(cancel_router)
     dp.include_router(mode_router)
     dp.include_router(forward_router)
@@ -159,6 +179,7 @@ async def _start() -> None:
     dp["settings"] = settings
     dp["topic_config"] = topic_config
     dp["tmux_manager"] = tmux_manager
+    dp["task_queue_runner"] = task_queue_runner
 
     ensure_tmp_dir(session_manager.file_cache_dir)
     cleanup_old_tmp_files(session_manager.file_cache_dir)

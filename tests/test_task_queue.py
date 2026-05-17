@@ -209,3 +209,21 @@ def test_queue_commands_in_bot_menu():
     names = {cmd.command for cmd in build_bot_commands("en")}
     for cmd in ("qmode", "qadd", "qlist", "qskip", "qclear", "qpause", "qresume", "qnext"):
         assert cmd in names, f"//{cmd} missing from bot menu"
+
+
+# ---------------------------------------------------------------------------
+# Task 10: __main__.py wiring
+# ---------------------------------------------------------------------------
+
+
+def test_main_imports_task_queue_router():
+    source = Path("src/telegram_bot/__main__.py").read_text(encoding="utf-8")
+    assert "task_queue_cmds" in source
+    assert "task_queue_router" in source
+
+
+def test_main_wires_task_queue_runner():
+    source = Path("src/telegram_bot/__main__.py").read_text(encoding="utf-8")
+    assert "TaskQueueRunner" in source
+    assert "on_item_complete" in source
+    assert 'dp["task_queue_runner"]' in source

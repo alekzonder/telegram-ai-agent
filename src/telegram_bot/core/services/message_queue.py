@@ -321,12 +321,29 @@ class MessageQueue:
         """Cancel current processing: kill CC process and clear queue. Preserve session.
 
         Returns True if there was an active process or queued items to cancel.
+        Fires on_item_complete for any task_queue items that get dropped so
+        TaskQueueRunner can reset them to pending instead of leaving them stuck
+        in "running" state.
         """
         queue = self._get_queue(channel_key)
+        dropped_task_items = [item for item in queue.items if item.source == "task_queue"]
         dropped = len(queue.items)
         queue.items.clear()
 
         stopped = await self._session_manager.cancel(channel_key)
+
+        if self._on_item_complete is not None:
+            for item in dropped_task_items:
+                try:
+                    await self._on_item_complete(channel_key, item)
+                except Exception:
+                    logger.warning(
+                        "on_item_complete failed for cancelled item channel=%s task_id=%s",
+                        channel_key,
+                        item.task_id,
+                        exc_info=True,
+                    )
+
         return stopped or dropped > 0
 
     async def shutdown(self) -> None:

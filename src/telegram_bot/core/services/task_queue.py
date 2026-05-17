@@ -122,6 +122,13 @@ class TaskQueue:
                 self.save()
                 return
 
+    def mark_pending(self, task_id: str) -> None:
+        for t in self._tasks:
+            if t.id == task_id:
+                t.status = "pending"
+                self.save()
+                return
+
     def mark_done(self, task_id: str) -> None:
         for t in self._tasks:
             if t.id == task_id:
@@ -230,6 +237,17 @@ class TaskQueueRunner:
         # source == "task_queue"
         if task_id:
             response_text: str = self._session_manager.get_last_response(channel_key)  # type: ignore[attr-defined]
+            if not response_text:
+                # Empty response means the item was cancelled/dropped (e.g. user ran /cancel)
+                # before the task could execute. Reset to pending so it runs next time.
+                self._queue.mark_pending(task_id)
+                self._queue.set_state(TaskQueueState.IDLE)
+                logger.info(
+                    "TaskQueueRunner: task cancelled, reset to pending task_id=%s channel=%s",
+                    task_id,
+                    channel_key,
+                )
+                return
             if _TASK_COMPLETE_MARKER in response_text:
                 self._queue.mark_done(task_id)
                 await self.try_start_next(channel_key)

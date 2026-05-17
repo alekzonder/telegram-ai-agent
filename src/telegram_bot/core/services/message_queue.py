@@ -26,6 +26,8 @@ class QueueItem:
     entries: list[tuple[int, str]]  # (message_id, prompt)
     source_messages: list[Message]
     target_session_id: str | None = None
+    source: str = "user"
+    task_id: str | None = None
 
 
 @dataclass
@@ -40,6 +42,12 @@ class ChatQueue:
 # Type alias for the process callback
 ProcessCallback = Callable[
     [ChannelKey, str, list[Message], str | None],
+    Awaitable[None],
+]
+
+# Type alias for the on_item_complete callback
+OnItemComplete = Callable[
+    [ChannelKey, "QueueItem"],
     Awaitable[None],
 ]
 
@@ -71,10 +79,12 @@ class MessageQueue:
         bot: Bot,
         session_manager: SessionManager,
         process_callback: ProcessCallback,
+        on_item_complete: OnItemComplete | None = None,
     ) -> None:
         self._bot = bot
         self._session_manager = session_manager
         self._process_callback = process_callback
+        self._on_item_complete = on_item_complete
         self._queues: dict[ChannelKey, ChatQueue] = {}
         self._background_tasks: set[asyncio.Task[None]] = set()
 
@@ -102,6 +112,8 @@ class MessageQueue:
         source_message: Message,
         target_session_id: str | None = None,
         suppress_notification: bool = False,
+        source: str = "user",
+        task_id: str | None = None,
     ) -> None:
         """Add a message to the channel's queue.
 
@@ -117,6 +129,8 @@ class MessageQueue:
                 entries=[(message_id, prompt)],
                 source_messages=[source_message],
                 target_session_id=target_session_id,
+                source=source,
+                task_id=task_id,
             )
             queue.items.append(item)
             logger.info(
@@ -156,6 +170,8 @@ class MessageQueue:
                 entries=[(message_id, prompt)],
                 source_messages=[source_message],
                 target_session_id=target_session_id,
+                source=source,
+                task_id=task_id,
             )
             queue.items.append(item)
             position = len(queue.items)
@@ -254,6 +270,17 @@ class MessageQueue:
                         item.target_session_id,
                     )
                     queue.error_count = 0
+                    if self._on_item_complete is not None:
+                        try:
+                            await self._on_item_complete(channel_key, item)
+                        except Exception:
+                            logger.warning(
+                                "on_item_complete failed for channel=%s source=%s task_id=%s",
+                                channel_key,
+                                item.source,
+                                item.task_id,
+                                exc_info=True,
+                            )
                 except Exception:
                     # Drop semantics: the item was already popped above and is
                     # not re-enqueued. The backoff throttles the NEXT item so

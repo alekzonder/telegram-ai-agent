@@ -227,6 +227,9 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ui.queue_added_batch": "Added to batch, #{position} in queue",
         "ui.queue_added": "Added to queue (#{position})",
         "ui.queue_session_suffix": ", session: {sid}",
+        "ui.queue_task_started": "▶️ Working on: {preview}",
+        "ui.queue_task_done": "✅ Task done: {preview}",
+        "ui.queue_empty": "✅ Queue empty, all tasks done.",
         # --- Tool status (shown while CC runs a tool) -----------------
         "tool.read": "📖 Reading file",
         "tool.grep": "🔍 Searching",
@@ -403,6 +406,9 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ui.queue_added_batch": "Добавлено в батч, он №{position} в очереди",
         "ui.queue_added": "Добавлено в очередь (№{position})",
         "ui.queue_session_suffix": ", сессия: {sid}",
+        "ui.queue_task_started": "▶️ Беру в работу: {preview}",
+        "ui.queue_task_done": "✅ Задача выполнена: {preview}",
+        "ui.queue_empty": "✅ Очередь пуста, все задачи выполнены.",
         # --- Tool status ----------------------------------------------
         "tool.read": "📖 Читаю файл",
         "tool.grep": "🔍 Ищу",

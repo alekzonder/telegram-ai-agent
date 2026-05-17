@@ -252,12 +252,11 @@ class TaskQueueRunner:
         self._state[channel_key] = state
 
     def get_cwd(self, channel_key: object) -> str:
-        return self._session_manager._get_session(channel_key).cwd  # type: ignore[attr-defined]
+        return str(self._session_manager._get_session(channel_key).cwd)  # type: ignore[attr-defined]
 
     async def _reset_session(self, channel_key: object) -> None:
         if (
-            self._tmux_manager is not None
-            and self._tmux_manager.is_active(channel_key)  # type: ignore[attr-defined]
+            self._tmux_manager is not None and self._tmux_manager.is_active(channel_key)  # type: ignore[attr-defined]
         ):
             await self._tmux_manager.clear_context(  # type: ignore[attr-defined]
                 channel_key, self._session_manager

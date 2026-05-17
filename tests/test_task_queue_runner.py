@@ -121,7 +121,7 @@ async def test_try_start_next_prompt_contains_task_id_and_markers():
     prompt = mq.enqueue.call_args[0][1]
     assert "bd-xyz9" in prompt
     assert "bd close bd-xyz9" in prompt
-    assert "[TASK_COMPLETE]" in prompt
+    assert "[WAITING_FOR_INPUT]" in prompt
 
 
 async def test_try_start_next_sets_running_state():

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from dataclasses import dataclass
@@ -167,7 +168,6 @@ _TASK_PROMPT_TEMPLATE = (
     "IMPORTANT: This issue has been marked as in_progress.\n"
     "When you have completely finished all work:\n"
     "  1. Run: bd close {task_id}\n"
-    "  2. End your response with: [TASK_COMPLETE]\n"
     "Do not ask for approval or confirmation — work autonomously.\n"
     "If you absolutely need user input to proceed, end with: [WAITING_FOR_INPUT]\n"
     "\n"
@@ -241,9 +241,43 @@ class TaskQueueRunner:
         self._qmode_enabled = qmode_enabled
         self._state: dict[object, TaskQueueState] = {}
         self._current_task_titles: dict[object, str] = {}
+        self._periodic_task: asyncio.Task[None] | None = None
 
     def set_qmode(self, enabled: bool) -> None:
         self._qmode_enabled = enabled
+
+    def start(self, interval: int = 60) -> None:
+        """Start background periodic queue check loop."""
+        self._periodic_task = asyncio.create_task(
+            self._periodic_check_loop(interval), name="task_queue_periodic"
+        )
+
+    async def stop(self) -> None:
+        """Cancel background periodic check loop."""
+        if self._periodic_task is not None:
+            self._periodic_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._periodic_task
+            self._periodic_task = None
+
+    async def _periodic_check_loop(self, interval: int) -> None:
+        while True:
+            await asyncio.sleep(interval)
+            if not self._qmode_enabled:
+                continue
+            for channel_key in list(self._state.keys()):
+                if self.get_state(channel_key) != TaskQueueState.IDLE:
+                    continue
+                if self._message_queue.is_busy(channel_key):  # type: ignore[attr-defined]
+                    continue
+                try:
+                    await self.try_start_next(channel_key, silent=True)
+                except Exception:
+                    logger.warning(
+                        "TaskQueueRunner: periodic check failed channel=%s",
+                        channel_key,
+                        exc_info=True,
+                    )
 
     def get_state(self, channel_key: object) -> TaskQueueState:
         return self._state.get(channel_key, TaskQueueState.IDLE)
@@ -277,7 +311,7 @@ class TaskQueueRunner:
         except Exception:
             logger.warning("TaskQueueRunner: failed to send notification", exc_info=True)
 
-    async def try_start_next(self, channel_key: object) -> None:
+    async def try_start_next(self, channel_key: object, *, silent: bool = False) -> None:
         """Dequeue next task and enqueue into MessageQueue, or set IDLE."""
         if not self._qmode_enabled:
             return
@@ -287,15 +321,26 @@ class TaskQueueRunner:
         cwd = self.get_cwd(channel_key)
 
         if await self._beads_queue.has_in_progress(cwd):
-            logger.info(
-                "TaskQueueRunner: in_progress task exists, skipping channel=%s", channel_key
-            )
-            return
+            # If nothing is actually processing, the in_progress task is stale — reset it.
+            if not self._message_queue.is_busy(channel_key):  # type: ignore[attr-defined]
+                logger.warning(
+                    "TaskQueueRunner: stale in_progress task, resetting channel=%s", channel_key
+                )
+                tasks = await self._beads_queue.list_tasks(cwd)
+                for stale in tasks:
+                    if stale.status == "in_progress":
+                        await self._beads_queue.reset_task(cwd, stale.id)
+            else:
+                logger.info(
+                    "TaskQueueRunner: in_progress task exists, skipping channel=%s", channel_key
+                )
+                return
 
         task = await self._beads_queue.get_next(cwd)
         if task is None:
             self.set_state(channel_key, TaskQueueState.IDLE)
-            await self._notify(channel_key, t("ui.queue_empty"))
+            if not silent:
+                await self._notify(channel_key, t("ui.queue_empty"))
             return
 
         await self._beads_queue.claim_task(cwd, task.id)

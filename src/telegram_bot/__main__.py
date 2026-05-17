@@ -198,10 +198,12 @@ async def _start() -> None:
                 logger.warning("Periodic tmp cleanup failed", exc_info=True)
 
     cleanup_task = asyncio.create_task(_periodic_tmp_cleanup())
+    task_queue_runner.start()
 
     async def _on_shutdown() -> None:
         logger.info("Shutting down: cleaning up sessions...")
         cleanup_task.cancel()
+        await task_queue_runner.stop()
         await forward_batcher.shutdown()
         await message_queue.shutdown()
         await session_manager.shutdown()

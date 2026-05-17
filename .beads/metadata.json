@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "server",
+  "dolt_database": "telegram_ai_agent",
+  "project_id": "74488c9e-6ad6-4b24-a5d2-e078130682d2"
+}

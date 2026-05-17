@@ -1,4 +1,5 @@
 """Task queue command handlers."""
+
 from __future__ import annotations
 
 import logging
@@ -9,7 +10,7 @@ from aiogram import Bot, Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from telegram_bot.core.services.task_queue import TaskQueue, TaskQueueRunner, TaskQueueState
+from telegram_bot.core.services.task_queue import TaskQueueRunner, TaskQueueState
 from telegram_bot.core.services.topic_config import TopicConfig
 from telegram_bot.core.types import channel_key
 
@@ -65,7 +66,6 @@ async def handle_qadd(
     task_queue_runner: TaskQueueRunner,
     session_manager: object,
 ) -> None:
-    key = channel_key(message)
     queue = task_queue_runner._queue
 
     raw_text = message.text or message.caption or ""
@@ -91,7 +91,7 @@ async def handle_qadd(
         await message.answer("Укажи текст задачи: /qadd <текст задачи>")
         return
 
-    task = queue.add(task_text, media_paths=media_paths)
+    queue.add(task_text, media_paths=media_paths)
     position = len(queue.list_pending())
     await message.answer(f"Задача #{position} добавлена: {task_text[:80]}")
 

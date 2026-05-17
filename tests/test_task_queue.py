@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import json
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 from telegram_bot.core.config import Settings
+from telegram_bot.core.services.bot_commands import build_bot_commands
 from telegram_bot.core.services.claude import SessionManager
 from telegram_bot.core.services.message_queue import MessageQueue, QueueItem
+from telegram_bot.core.services.task_queue import TaskQueue, TaskQueueState
+from telegram_bot.core.services.topic_config import TopicConfig
 
 
 def test_queue_item_defaults_source_user():
@@ -54,8 +59,6 @@ def test_session_manager_store_and_get_last_response(tmp_path):
 # ---------------------------------------------------------------------------
 # TaskQueue tests
 # ---------------------------------------------------------------------------
-
-from telegram_bot.core.services.task_queue import TaskQueue, TaskQueueState  # noqa: E402
 
 
 def test_task_queue_add_and_list(tmp_path):
@@ -145,24 +148,26 @@ def test_task_queue_restart_resets_running_to_pending(tmp_path):
 # Task 5: TopicConfig qmode tests
 # ---------------------------------------------------------------------------
 
-import json
-from telegram_bot.core.services.topic_config import TopicConfig
-
 
 def test_topic_config_parses_qmode(tmp_path):
     mcp = tmp_path / ".mcp.json"
     mcp.write_text("{}", encoding="utf-8")
     path = tmp_path / "topic_config.json"
     path.write_text(
-        json.dumps({
-            "topics": {
-                "99": {
-                    "name": "T", "type": "assistant", "mode": "free",
-                    "cwd": str(tmp_path), "mcp_config": str(mcp),
-                    "qmode": True,
+        json.dumps(
+            {
+                "topics": {
+                    "99": {
+                        "name": "T",
+                        "type": "assistant",
+                        "mode": "free",
+                        "cwd": str(tmp_path),
+                        "mcp_config": str(mcp),
+                        "qmode": True,
+                    }
                 }
             }
-        }),
+        ),
         encoding="utf-8",
     )
     topic = TopicConfig(str(path), ".").get_topic(99)
@@ -170,8 +175,8 @@ def test_topic_config_parses_qmode(tmp_path):
 
 
 def test_topic_config_qmode_defaults_false(tmp_path):
-    topic = TopicConfig.__new__(TopicConfig)
     from telegram_bot.core.services.topic_config import _default_topic
+
     assert _default_topic().qmode is False
 
 
@@ -188,8 +193,6 @@ async def test_topic_config_update_qmode(tmp_path):
 # Task 6: task-manager.md marker protocol
 # ---------------------------------------------------------------------------
 
-from pathlib import Path
-
 
 def test_task_manager_prompt_has_markers():
     prompt = Path("src/telegram_bot/prompts/task-manager.md").read_text(encoding="utf-8")
@@ -200,8 +203,6 @@ def test_task_manager_prompt_has_markers():
 # ---------------------------------------------------------------------------
 # Task 9: Bot command menu
 # ---------------------------------------------------------------------------
-
-from telegram_bot.core.services.bot_commands import build_bot_commands
 
 
 def test_queue_commands_in_bot_menu():

@@ -1,13 +1,12 @@
 """Tests for TaskQueueRunner completion hook and state transitions."""
+
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
-import pytest
+from unittest.mock import MagicMock
 
-from telegram_bot.core.services.task_queue import TaskQueue, TaskQueueRunner, TaskQueueState
 from telegram_bot.core.services.message_queue import QueueItem
+from telegram_bot.core.services.task_queue import TaskQueue, TaskQueueRunner, TaskQueueState
 
 
 def _make_item(source: str = "user", task_id: str | None = None) -> QueueItem:
@@ -66,7 +65,7 @@ async def test_on_item_done_waiting_for_input_pauses(tmp_path):
 
 
 async def test_on_item_done_question_heuristic_pauses(tmp_path):
-    runner, queue, sm, mq = _make_runner(tmp_path)
+    runner, queue, sm, _mq = _make_runner(tmp_path)
     task = queue.add("do X")
     queue.mark_running(task.id)
     queue.set_state(TaskQueueState.RUNNING)
@@ -93,7 +92,7 @@ async def test_on_item_done_no_marker_starts_next(tmp_path):
 
 
 async def test_on_item_done_user_source_clears_awaiting_human(tmp_path):
-    runner, queue, sm, mq = _make_runner(tmp_path)
+    runner, queue, _sm, mq = _make_runner(tmp_path)
     queue.set_state(TaskQueueState.PAUSED_AWAITING_HUMAN)
     queue.add("next task")
 
@@ -104,7 +103,7 @@ async def test_on_item_done_user_source_clears_awaiting_human(tmp_path):
 
 
 async def test_try_start_next_noop_when_qmode_off(tmp_path):
-    runner, queue, sm, mq = _make_runner(tmp_path)
+    runner, queue, _sm, mq = _make_runner(tmp_path)
     runner.set_qmode(False)
     queue.add("task A")
 
@@ -113,7 +112,7 @@ async def test_try_start_next_noop_when_qmode_off(tmp_path):
 
 
 async def test_try_start_next_noop_when_paused_by_user(tmp_path):
-    runner, queue, sm, mq = _make_runner(tmp_path)
+    runner, queue, _sm, mq = _make_runner(tmp_path)
     queue.set_state(TaskQueueState.PAUSED_BY_USER)
     queue.add("task A")
 
@@ -122,7 +121,7 @@ async def test_try_start_next_noop_when_paused_by_user(tmp_path):
 
 
 async def test_try_start_next_sets_idle_when_queue_empty(tmp_path):
-    runner, queue, sm, mq = _make_runner(tmp_path)
+    runner, queue, _sm, mq = _make_runner(tmp_path)
     queue.set_state(TaskQueueState.RUNNING)
 
     await runner.try_start_next((1, 2))
@@ -131,15 +130,16 @@ async def test_try_start_next_sets_idle_when_queue_empty(tmp_path):
 
 
 async def test_try_start_next_enqueues_with_task_queue_source(tmp_path):
-    runner, queue, sm, mq = _make_runner(tmp_path)
+    runner, queue, _sm, mq = _make_runner(tmp_path)
     queue.add("my task")
 
     await runner.try_start_next((10, 20))
 
     assert mq.enqueue.called
     call_kwargs = mq.enqueue.call_args
-    assert call_kwargs.kwargs.get("source") == "task_queue" or \
-           (len(call_kwargs.args) > 4 and False)  # kwargs path
+    assert call_kwargs.kwargs.get("source") == "task_queue" or (
+        len(call_kwargs.args) > 4 and False
+    )  # kwargs path
     # Check via kwargs dict
     kwargs = mq.enqueue.call_args[1]
     assert kwargs["source"] == "task_queue"

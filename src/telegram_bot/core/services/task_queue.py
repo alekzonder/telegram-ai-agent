@@ -274,6 +274,8 @@ class TaskQueueRunner:
             len(prompt),
         )
 
+        chat_id: int
+        thread_id: int | None
         chat_id, thread_id = channel_key  # type: ignore[misc]
         source_msg = TaskQueueMessage(self._bot, chat_id, thread_id)
         self._message_queue.enqueue(  # type: ignore[attr-defined]

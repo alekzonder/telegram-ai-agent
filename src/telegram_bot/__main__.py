@@ -140,6 +140,7 @@ async def _start() -> None:
         session_manager=session_manager,
         message_queue=None,  # assigned below to break circular dependency  # type: ignore[arg-type]
         bot=bot,
+        tmux_manager=tmux_manager,
         qmode_enabled=False,
     )
 

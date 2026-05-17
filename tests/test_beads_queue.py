@@ -74,7 +74,7 @@ async def test_reset_task_calls_correct_args(queue):
 
 
 async def test_add_task_calls_bd_q_and_returns_id(queue):
-    mock_run = AsyncMock(return_value="bd-ccc3\n")
+    mock_run = AsyncMock(return_value="bd-ccc3")
     with patch.object(queue, "_run", new=mock_run):
         result = await queue.add_task(CWD, "New task", priority=1)
     mock_run.assert_called_once_with(CWD, "q", "New task", "-p", "1")
@@ -82,7 +82,7 @@ async def test_add_task_calls_bd_q_and_returns_id(queue):
 
 
 async def test_add_task_default_priority(queue):
-    mock_run = AsyncMock(return_value="bd-ddd4\n")
+    mock_run = AsyncMock(return_value="bd-ddd4")
     with patch.object(queue, "_run", new=mock_run):
         await queue.add_task(CWD, "Default priority task")
     mock_run.assert_called_once_with(CWD, "q", "Default priority task", "-p", "2")

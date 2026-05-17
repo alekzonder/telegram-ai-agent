@@ -164,6 +164,8 @@ class SessionManager:
         # Copy of the module-level _MODE_TOOLS so instance-scoped extensions
         # (extend_mode_tools) don't leak into other SessionManager instances.
         self._mode_tools: dict[str, str] = dict(_MODE_TOOLS)
+        # Last full response text per channel — used by task queue marker detection.
+        self._last_response: dict[ChannelKey, str] = {}
 
     def extend_mode_tools(self, extensions: dict[str, list[str]]) -> None:
         """Append tool names to the allowedTools list of one or more modes.
@@ -354,6 +356,14 @@ class SessionManager:
         session.session_id = None
         session.last_activity = 0.0
         session.cancelled = False
+
+    def store_last_response(self, channel_key: ChannelKey, text: str) -> None:
+        """Persist the last full response text for task queue marker detection."""
+        self._last_response[channel_key] = text
+
+    def get_last_response(self, channel_key: ChannelKey) -> str:
+        """Return the last stored response text for *channel_key*, or ''."""
+        return self._last_response.get(channel_key, "")
 
     def _build_command(
         self,

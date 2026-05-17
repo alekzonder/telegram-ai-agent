@@ -80,8 +80,12 @@ async def process_queue_item(
     if reply_message is None:
         return
     await send_streaming_response(
-        reply_message, session_manager, channel_key, prompt,
-        tmux_manager=tmux_manager, topic_config=topic_config,
+        reply_message,
+        session_manager,
+        channel_key,
+        prompt,
+        tmux_manager=tmux_manager,
+        topic_config=topic_config,
     )
 
 

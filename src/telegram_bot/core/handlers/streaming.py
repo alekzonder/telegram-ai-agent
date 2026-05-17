@@ -456,6 +456,7 @@ async def _handle_result_message_event(ctx: _StreamCtx, event: StreamEvent) -> N
     a single final response is assembled post-stream). Empty/whitespace
     content is already filtered by the centralized empty guard in on_event.
     """
+    ctx.accumulated_text += event.content  # track for task queue (tmux mode)
     await _format_and_send_chunks(
         ctx,
         event.content,
@@ -765,6 +766,14 @@ async def send_streaming_response(
     # In tmux each result_message is recorded inside on_event (long-lived tail),
     # so no post-stream recording is needed here.
     final_text = response or (ctx.accumulated_text if not used_tmux else "")
+
+    # Store response text for task queue marker detection (both modes).
+    # In tmux mode, final_text is "" but ctx.accumulated_text holds result_message
+    # content accumulated above. In subprocess mode both carry the full response.
+    response_text = ctx.accumulated_text or final_text
+    if response_text:
+        session_manager.store_last_response(channel_key, response_text)
+
     if not final_text:
         return
 

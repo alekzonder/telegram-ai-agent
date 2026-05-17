@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
+from telegram_bot.core.config import Settings
+from telegram_bot.core.services.claude import SessionManager
 from telegram_bot.core.services.message_queue import MessageQueue, QueueItem
 
 
@@ -33,3 +35,17 @@ async def test_message_queue_on_item_complete_fires():
     await asyncio.sleep(0.1)
     assert len(completed) == 1
     assert completed[0] == (key, "task_queue", "t1")
+
+
+def test_session_manager_store_and_get_last_response(tmp_path):
+    settings = Settings(
+        _env_file=None,
+        telegram_bot_token="test",
+        project_root=str(tmp_path),
+        default_cwd=str(tmp_path),
+    )
+    sm = SessionManager(settings)
+    key = (1, 2)
+    assert sm.get_last_response(key) == ""
+    sm.store_last_response(key, "hello [TASK_COMPLETE]")
+    assert sm.get_last_response(key) == "hello [TASK_COMPLETE]"

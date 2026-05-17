@@ -182,3 +182,16 @@ async def test_topic_config_update_qmode(tmp_path):
     assert ok
     data = json.loads(path.read_text())
     assert data["topics"]["42"]["qmode"] is True
+
+
+# ---------------------------------------------------------------------------
+# Task 6: task-manager.md marker protocol
+# ---------------------------------------------------------------------------
+
+from pathlib import Path
+
+
+def test_task_manager_prompt_has_markers():
+    prompt = Path("src/telegram_bot/prompts/task-manager.md").read_text(encoding="utf-8")
+    assert "[TASK_COMPLETE]" in prompt
+    assert "[WAITING_FOR_INPUT]" in prompt

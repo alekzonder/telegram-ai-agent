@@ -306,6 +306,11 @@ class TopicConfig:
             return _default_topic()
         return self._topics.get(thread_id, _default_topic())
 
+    def get_qmode_thread_ids(self) -> list[int]:
+        """Return thread_ids that have qmode=True."""
+        self._maybe_reload()
+        return [tid for tid, s in self._topics.items() if s.qmode]
+
     def get_routing(self, notification_type: str) -> int | None:
         """Return thread_id for a notification type, or None if not configured."""
         self._maybe_reload()

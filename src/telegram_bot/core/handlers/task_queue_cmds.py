@@ -8,7 +8,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from telegram_bot.core.services.task_queue import TaskQueueRunner, TaskQueueState
+from telegram_bot.core.services.task_queue import TaskQueueRunner
 from telegram_bot.core.services.topic_config import TopicConfig
 from telegram_bot.core.types import channel_key
 
@@ -53,12 +53,12 @@ async def handle_qmode(
     text = message.text or ""
     parts = text.split(maxsplit=1)
     if len(parts) < 2 or parts[1].strip() not in {"on", "off"}:
-        current = "on" if task_queue_runner._qmode_enabled else "off"
+        current = "on" if task_queue_runner.is_qmode(key) else "off"
         await message.answer(f"Режим очереди: {current}\nИспользование: /qmode on|off")
         return
 
     enabled = parts[1].strip() == "on"
-    task_queue_runner.set_qmode(enabled)
+    task_queue_runner.set_qmode(key, enabled)
 
     thread_id = key[1]
     if thread_id is not None:
@@ -80,19 +80,13 @@ async def handle_qlist(
     cwd = task_queue_runner.get_cwd(key)
 
     tasks = await task_queue_runner._beads_queue.list_tasks(cwd)
-    state = task_queue_runner.get_state(key)
-    state_label = {
-        TaskQueueState.IDLE: "готова",
-        TaskQueueState.RUNNING: "выполняется",
-        TaskQueueState.PAUSED_AWAITING_HUMAN: "ожидает ответа",
-        TaskQueueState.PAUSED_BY_USER: "на паузе",
-    }.get(state, state.value)
+    qmode_label = "вкл" if task_queue_runner.is_qmode(key) else "выкл"
 
     if not tasks:
-        await message.answer(f"Очередь пуста. Состояние: {state_label}.")
+        await message.answer(f"Очередь пуста. qmode: {qmode_label}.")
         return
 
-    lines = [f"Очередь ({len(tasks)} задач, состояние: {state_label}):"]
+    lines = [f"Очередь ({len(tasks)} задач, qmode: {qmode_label}):"]
     for task in tasks:
         marker = "⚙️" if task.status == "in_progress" else "•"
         preview = task.title[:60] + ("…" if len(task.title) > 60 else "")
@@ -130,26 +124,7 @@ async def handle_qclear(
     for task in open_tasks:
         await task_queue_runner._beads_queue.close_task(cwd, task.id)
 
-    task_queue_runner.set_state(key, TaskQueueState.IDLE)
     await message.answer(f"Очередь очищена ({len(open_tasks)} задач закрыто).")
-
-
-@router.message(Command("qpause"))
-async def handle_qpause(message: Message, task_queue_runner: TaskQueueRunner) -> None:
-    key = channel_key(message)
-    task_queue_runner.set_state(key, TaskQueueState.PAUSED_BY_USER)
-    await message.answer("Очередь на паузе. /qresume для возобновления.")
-
-
-@router.message(Command("qresume"))
-async def handle_qresume(
-    message: Message,
-    task_queue_runner: TaskQueueRunner,
-) -> None:
-    key = channel_key(message)
-    task_queue_runner.set_state(key, TaskQueueState.IDLE)
-    await task_queue_runner.try_start_next(key)
-    await message.answer("Очередь возобновлена.")
 
 
 @router.message(Command("qnext"))
@@ -158,7 +133,5 @@ async def handle_qnext(
     task_queue_runner: TaskQueueRunner,
 ) -> None:
     key = channel_key(message)
-    if task_queue_runner.get_state(key) == TaskQueueState.PAUSED_AWAITING_HUMAN:
-        task_queue_runner.set_state(key, TaskQueueState.IDLE)
     await task_queue_runner.try_start_next(key)
     await message.answer("Следующая задача запущена.")

@@ -1355,6 +1355,21 @@ class SessionManager:
         current = self._get_session(channel_key)
         return ref.provider != current.engine
 
+    def get_known_channel_keys(self) -> list[tuple[int, int | None]]:
+        """Return all channel keys from the persisted channel→session mapping."""
+        result = []
+        for k in self._channel_sessions:
+            parts = k.split(":", 1)
+            if len(parts) != 2:
+                continue
+            try:
+                chat_id = int(parts[0])
+                thread_id = None if parts[1] == "None" else int(parts[1])
+                result.append((chat_id, thread_id))
+            except ValueError:
+                pass
+        return result
+
     def load_mapping(self) -> None:
         """Load message→session mapping from JSON file.
 

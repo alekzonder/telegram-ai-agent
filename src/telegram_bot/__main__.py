@@ -140,15 +140,9 @@ async def _start() -> None:
         message_queue=None,  # assigned below to break circular dependency  # type: ignore[arg-type]
         bot=bot,
         tmux_manager=tmux_manager,
-        qmode_enabled=False,
     )
 
-    async def _on_item_complete(channel_key: ChannelKey, item: object) -> None:
-        await task_queue_runner.on_item_done(channel_key, item)
-
-    message_queue = MessageQueue(
-        bot, session_manager, _process_queue_item, on_item_complete=_on_item_complete
-    )
+    message_queue = MessageQueue(bot, session_manager, _process_queue_item)
     task_queue_runner._message_queue = message_queue
 
     dp = Dispatcher()
@@ -185,6 +179,16 @@ async def _start() -> None:
     cleanup_old_tmp_files(session_manager.file_cache_dir)
     session_manager.load_mapping()
     session_manager.start_cleanup()
+
+    # Restore qmode channels from topic_config + persisted channel sessions.
+    qmode_thread_ids = set(topic_config.get_qmode_thread_ids())
+    if qmode_thread_ids:
+        all_known = set(session_manager.get_known_channel_keys())
+        all_known.update(tmux_manager.get_known_channel_keys())
+        for chat_id, thread_id in all_known:
+            if thread_id in qmode_thread_ids:
+                task_queue_runner.set_qmode((chat_id, thread_id), True)
+                logger.info("qmode restored for channel (%s, %s)", chat_id, thread_id)
 
     periodic_cleanup_interval = 6 * 3600
 

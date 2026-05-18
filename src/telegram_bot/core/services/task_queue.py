@@ -7,7 +7,6 @@ import contextlib
 import json
 import logging
 from dataclasses import dataclass
-from enum import Enum
 from typing import Any
 
 from telegram_bot.core.messages import t
@@ -15,17 +14,10 @@ from telegram_bot.core.messages import t
 logger = logging.getLogger(__name__)
 
 
-class TaskQueueState(Enum):
-    IDLE = "idle"
-    RUNNING = "running"
-    PAUSED_AWAITING_HUMAN = "paused_awaiting_human"
-    PAUSED_BY_USER = "paused_by_user"
-
-
 @dataclass
 class BeadsTask:
-    id: str  # beads ID, e.g. "bd-a1b2"
-    title: str  # issue title
+    id: str  # beads ID, e.g. "personal-assistant-1a9"
+    title: str
     priority: int  # 0-4
     status: str = "open"  # open, in_progress
 
@@ -87,9 +79,6 @@ class BeadsQueue:
     async def close_task(self, cwd: str, task_id: str) -> None:
         await self._run(cwd, "close", task_id)
 
-    async def reset_task(self, cwd: str, task_id: str) -> None:
-        await self._run(cwd, "update", task_id, "--status", "open")
-
     async def add_task(self, cwd: str, text: str, priority: int = 2) -> str:
         """Create task via `bd q`, return the new task ID."""
         return await self._run(cwd, "q", text, "-p", str(priority))
@@ -115,54 +104,6 @@ class BeadsQueue:
         ]
 
 
-class TaskQueue:
-    """Compatibility stub — replaced by BeadsQueue in Task 2.
-
-    __main__.py still instantiates this; Task 4 will remove the instantiation.
-    """
-
-    def __init__(self, path: Any) -> None:
-        self._state: TaskQueueState = TaskQueueState.IDLE
-        self._tasks: list[Any] = []
-
-    @property
-    def state(self) -> TaskQueueState:
-        return self._state
-
-    def set_state(self, state: TaskQueueState) -> None:
-        self._state = state
-
-    def add(self, text: str, **kwargs: Any) -> Any:
-        raise NotImplementedError("TaskQueue is a stub; use BeadsQueue")
-
-    def list_pending(self) -> list[Any]:
-        return []
-
-    def peek_next(self) -> Any:
-        return None
-
-    def mark_running(self, task_id: str) -> None:
-        pass
-
-    def mark_pending(self, task_id: str) -> None:
-        pass
-
-    def mark_done(self, task_id: str) -> None:
-        pass
-
-    def get_by_id(self, task_id: str) -> Any:
-        return None
-
-    def skip_next(self) -> Any:
-        return None
-
-    def clear(self) -> int:
-        return 0
-
-
-_TASK_COMPLETE_MARKER = "[TASK_COMPLETE]"
-_WAITING_FOR_INPUT_MARKER = "[WAITING_FOR_INPUT]"
-
 _TASK_PROMPT_TEMPLATE = (
     "Issue: {task_id}\n"
     "IMPORTANT: This issue has been marked as in_progress.\n"
@@ -176,22 +117,12 @@ _TASK_PROMPT_TEMPLATE = (
 )
 
 
-def _is_question(text: str) -> bool:
-    """Heuristic: last non-empty line ends with '?'."""
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-    return bool(lines) and lines[-1].endswith("?")
-
-
 def _build_task_prompt(task_id: str, task_text: str) -> str:
     return _TASK_PROMPT_TEMPLATE.format(task_id=task_id, task_text=task_text)
 
 
 class TaskQueueMessage:
-    """Minimal Message-like object for task queue enqueue calls.
-
-    Supports `await message.answer(text)` using the injected bot so
-    send_streaming_response can post "Thinking..." into the correct channel.
-    """
+    """Minimal Message-like object for task queue enqueue calls."""
 
     message_id: int = 0
     reply_to_message = None
@@ -201,7 +132,7 @@ class TaskQueueMessage:
         self._bot = bot
         self._chat_id = chat_id
         self._thread_id = thread_id
-        self.bot = bot  # send_streaming_response reads message.bot for live buffer setup
+        self.bot = bot
 
         class _Chat:
             def __init__(self, cid: int) -> None:
@@ -221,7 +152,13 @@ class TaskQueueMessage:
 
 
 class TaskQueueRunner:
-    """Drives automatic task execution via MessageQueue completion events."""
+    """Drives automatic task execution by polling beads every minute.
+
+    Logic:
+    - Every 60s: for each qmode-enabled channel, check beads.
+    - If any task is in_progress → skip (Claude is working).
+    - If no in_progress → claim next open task and dispatch it.
+    """
 
     def __init__(
         self,
@@ -231,29 +168,30 @@ class TaskQueueRunner:
         message_queue: object,
         bot: object,
         tmux_manager: object | None = None,
-        qmode_enabled: bool = False,
     ) -> None:
         self._beads_queue = beads_queue
         self._session_manager = session_manager
         self._message_queue = message_queue
         self._bot = bot
         self._tmux_manager = tmux_manager
-        self._qmode_enabled = qmode_enabled
-        self._state: dict[object, TaskQueueState] = {}
-        self._current_task_titles: dict[object, str] = {}
+        self._qmode_channels: set[Any] = set()
         self._periodic_task: asyncio.Task[None] | None = None
 
-    def set_qmode(self, enabled: bool) -> None:
-        self._qmode_enabled = enabled
+    def set_qmode(self, channel_key: object, enabled: bool) -> None:
+        if enabled:
+            self._qmode_channels.add(channel_key)
+        else:
+            self._qmode_channels.discard(channel_key)
+
+    def is_qmode(self, channel_key: object) -> bool:
+        return channel_key in self._qmode_channels
 
     def start(self, interval: int = 60) -> None:
-        """Start background periodic queue check loop."""
         self._periodic_task = asyncio.create_task(
             self._periodic_check_loop(interval), name="task_queue_periodic"
         )
 
     async def stop(self) -> None:
-        """Cancel background periodic check loop."""
         if self._periodic_task is not None:
             self._periodic_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -263,25 +201,7 @@ class TaskQueueRunner:
     async def _periodic_check_loop(self, interval: int) -> None:
         while True:
             await asyncio.sleep(interval)
-            if not self._qmode_enabled:
-                continue
-            for channel_key in list(self._state.keys()):
-                state = self.get_state(channel_key)
-                # Explicit user pause — never auto-advance.
-                if state == TaskQueueState.PAUSED_BY_USER:
-                    continue
-                # Skip while the message queue is actively processing.
-                if self._message_queue.is_busy(channel_key):  # type: ignore[attr-defined]
-                    continue
-                # RUNNING but queue is idle → state got stuck (e.g. exception after
-                # claim_task but before enqueue). Reset so try_start_next can proceed.
-                if state == TaskQueueState.RUNNING:
-                    logger.warning(
-                        "TaskQueueRunner: RUNNING with idle queue, resetting channel=%s",
-                        channel_key,
-                    )
-                    self.set_state(channel_key, TaskQueueState.IDLE)
-                # IDLE or PAUSED_AWAITING_HUMAN with no active processing: try next task.
+            for channel_key in list(self._qmode_channels):
                 try:
                     await self.try_start_next(channel_key, silent=True)
                 except Exception:
@@ -291,18 +211,13 @@ class TaskQueueRunner:
                         exc_info=True,
                     )
 
-    def get_state(self, channel_key: object) -> TaskQueueState:
-        return self._state.get(channel_key, TaskQueueState.IDLE)
-
-    def set_state(self, channel_key: object, state: TaskQueueState) -> None:
-        self._state[channel_key] = state
-
     def get_cwd(self, channel_key: object) -> str:
         return str(self._session_manager._get_session(channel_key).cwd)  # type: ignore[attr-defined]
 
     async def _reset_session(self, channel_key: object) -> None:
         if (
-            self._tmux_manager is not None and self._tmux_manager.is_active(channel_key)  # type: ignore[attr-defined]
+            self._tmux_manager is not None
+            and self._tmux_manager.is_active(channel_key)  # type: ignore[attr-defined]
         ):
             await self._tmux_manager.clear_context(  # type: ignore[attr-defined]
                 channel_key, self._session_manager
@@ -324,48 +239,31 @@ class TaskQueueRunner:
             logger.warning("TaskQueueRunner: failed to send notification", exc_info=True)
 
     async def try_start_next(self, channel_key: object, *, silent: bool = False) -> None:
-        """Dequeue next task and enqueue into MessageQueue, or set IDLE."""
-        if not self._qmode_enabled:
-            return
-        if self.get_state(channel_key) == TaskQueueState.PAUSED_BY_USER:
+        """Check beads and start next task if nothing is in_progress."""
+        if channel_key not in self._qmode_channels:
             return
 
         cwd = self.get_cwd(channel_key)
 
         if await self._beads_queue.has_in_progress(cwd):
-            # If nothing is actually processing, the in_progress task is stale — reset it.
-            if not self._message_queue.is_busy(channel_key):  # type: ignore[attr-defined]
-                logger.warning(
-                    "TaskQueueRunner: stale in_progress task, resetting channel=%s", channel_key
-                )
-                tasks = await self._beads_queue.list_tasks(cwd)
-                for stale in tasks:
-                    if stale.status == "in_progress":
-                        await self._beads_queue.reset_task(cwd, stale.id)
-            else:
-                logger.info(
-                    "TaskQueueRunner: in_progress task exists, skipping channel=%s", channel_key
-                )
-                return
+            logger.info(
+                "TaskQueueRunner: in_progress task exists, skipping channel=%s", channel_key
+            )
+            return
 
         task = await self._beads_queue.get_next(cwd)
         if task is None:
-            self.set_state(channel_key, TaskQueueState.IDLE)
             if not silent:
                 await self._notify(channel_key, t("ui.queue_empty"))
             return
 
         await self._beads_queue.claim_task(cwd, task.id)
-        self.set_state(channel_key, TaskQueueState.RUNNING)
-        self._current_task_titles[channel_key] = task.title
-
         await self._reset_session(channel_key)
 
         preview = task.title[:60] + ("…" if len(task.title) > 60 else "")
         await self._notify(channel_key, t("ui.queue_task_started", preview=preview))
 
         prompt = _build_task_prompt(task.id, task.title)
-
         logger.info(
             "TaskQueueRunner: starting task_id=%s channel=%s prompt_len=%d",
             task.id,
@@ -386,55 +284,3 @@ class TaskQueueRunner:
             task_id=task.id,
             suppress_notification=True,
         )
-
-    async def on_item_done(self, channel_key: object, item: object) -> None:
-        """Called by MessageQueue after each item completes."""
-        source = getattr(item, "source", "user")
-        task_id = getattr(item, "task_id", None)
-
-        if source == "user":
-            if self.get_state(channel_key) == TaskQueueState.PAUSED_AWAITING_HUMAN:
-                self.set_state(channel_key, TaskQueueState.IDLE)
-                await self.try_start_next(channel_key)
-            return
-
-        # source == "task_queue"
-        if task_id is None:
-            return
-
-        cwd = self.get_cwd(channel_key)
-        response_text: str = self._session_manager.get_last_response(channel_key)  # type: ignore[attr-defined]
-        preview = self._current_task_titles.get(channel_key, task_id)[:60]
-
-        if not response_text:
-            # Cancelled/dropped — reset so it runs next time
-            await self._beads_queue.reset_task(cwd, task_id)
-            self.set_state(channel_key, TaskQueueState.IDLE)
-            logger.info(
-                "TaskQueueRunner: task cancelled, reset to open task_id=%s channel=%s",
-                task_id,
-                channel_key,
-            )
-            return
-
-        if _TASK_COMPLETE_MARKER in response_text:
-            # Claude already ran `bd close <id>` and wrote [TASK_COMPLETE]
-            self.set_state(channel_key, TaskQueueState.IDLE)
-            await self._notify(channel_key, t("ui.queue_task_done", preview=preview))
-            await self.try_start_next(channel_key)
-        elif _WAITING_FOR_INPUT_MARKER in response_text:
-            await self._beads_queue.close_task(cwd, task_id)
-            self.set_state(channel_key, TaskQueueState.PAUSED_AWAITING_HUMAN)
-            logger.info("TaskQueueRunner: PAUSED_AWAITING_HUMAN channel=%s", channel_key)
-        elif _is_question(response_text):
-            await self._beads_queue.close_task(cwd, task_id)
-            self.set_state(channel_key, TaskQueueState.PAUSED_AWAITING_HUMAN)
-            logger.info(
-                "TaskQueueRunner: question heuristic fired, PAUSED_AWAITING_HUMAN channel=%s",
-                channel_key,
-            )
-        else:
-            # No explicit marker — treat as done
-            self.set_state(channel_key, TaskQueueState.IDLE)
-            await self._notify(channel_key, t("ui.queue_task_done", preview=preview))
-            await self.try_start_next(channel_key)

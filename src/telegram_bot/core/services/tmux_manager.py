@@ -383,6 +383,10 @@ class TmuxManager:
         state = self._sessions.get(channel_key)
         return state.session_id if state else None
 
+    def get_known_channel_keys(self) -> list[ChannelKey]:
+        """Return all channel keys with active tmux sessions."""
+        return list(self._sessions.keys())
+
     @staticmethod
     def expected_epoch(state: TmuxSessionState) -> str:
         """8-hex epoch for inline-keyboard callback_data binding.

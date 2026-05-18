@@ -15,6 +15,8 @@ from telegram_bot.core.types import channel_key
 logger = logging.getLogger(__name__)
 router = Router(name="task_queue")
 
+_VALID_STATUSES = {"open", "in_progress", "closed"}
+
 
 def _parse_qadd_text(text: str) -> tuple[str, int]:
     """Return (task_text, priority). Priority defaults to 2 if not specified."""
@@ -28,6 +30,18 @@ def _parse_qadd_text(text: str) -> tuple[str, int]:
         if 0 <= priority <= 4:
             return body[3:].strip(), priority
     return body, 2
+
+
+def _parse_qstatus_args(text: str) -> tuple[str | None, str | None]:
+    """Return (task_id, status) or (None, None) on invalid input."""
+    parts = text.split(maxsplit=2)
+    if len(parts) < 3:
+        return None, None
+    task_id = parts[1].strip()
+    status = parts[2].strip()
+    if status not in _VALID_STATUSES:
+        return None, None
+    return task_id, status
 
 
 @router.message(Command("qadd"))
@@ -103,37 +117,26 @@ async def handle_qlist(
     await message.answer("\n".join(lines))
 
 
-@router.message(Command("qskip"))
-async def handle_qskip(
+@router.message(Command("qstatus"))
+async def handle_qstatus(
     message: Message,
     task_queue_runner: TaskQueueRunner,
 ) -> None:
     key = channel_key(message)
     cwd = task_queue_runner.get_cwd(key)
 
-    task = await task_queue_runner._beads_queue.get_next(cwd)
-    if task is None:
-        await message.answer("Нет задач для пропуска.")
+    raw_text = message.text or ""
+    task_id, status = _parse_qstatus_args(raw_text)
+
+    if task_id is None or status is None:
+        await message.answer("Использование: /qstatus <id> open|in_progress|closed")
         return
 
-    await task_queue_runner._beads_queue.close_task(cwd, task.id)
-    await message.answer(f"Задача пропущена: [{task.id}] {task.title[:60]}")
+    await task_queue_runner._beads_queue.set_status(cwd, task_id, status)
+    await message.answer(f"Статус [{task_id}] → {status}")
 
-
-@router.message(Command("qclear"))
-async def handle_qclear(
-    message: Message,
-    task_queue_runner: TaskQueueRunner,
-) -> None:
-    key = channel_key(message)
-    cwd = task_queue_runner.get_cwd(key)
-
-    tasks = await task_queue_runner._beads_queue.list_tasks(cwd)
-    open_tasks = [t for t in tasks if t.status == "open"]
-    for task in open_tasks:
-        await task_queue_runner._beads_queue.close_task(cwd, task.id)
-
-    await message.answer(f"Очередь очищена ({len(open_tasks)} задач закрыто).")
+    if status == "open" and task_queue_runner.is_qmode(key):
+        await task_queue_runner.try_start_next(key, silent=True)
 
 
 @router.message(Command("qpriority"))
@@ -156,13 +159,3 @@ async def handle_qpriority(
     priority = int(parts[2])
     await task_queue_runner._beads_queue.set_priority(cwd, task_id, priority)
     await message.answer(f"Приоритет задачи [{task_id}] установлен: p{priority}")
-
-
-@router.message(Command("qnext"))
-async def handle_qnext(
-    message: Message,
-    task_queue_runner: TaskQueueRunner,
-) -> None:
-    key = channel_key(message)
-    await task_queue_runner.try_start_next(key)
-    await message.answer("Следующая задача запущена.")

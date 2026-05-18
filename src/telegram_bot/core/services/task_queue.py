@@ -86,6 +86,12 @@ class BeadsQueue:
         """Create task via `bd q`, return the new task ID."""
         return await self._run(cwd, "q", text, "-p", str(priority))
 
+    async def set_status(self, cwd: str, task_id: str, status: str) -> None:
+        if status == "closed":
+            await self._run(cwd, "close", task_id)
+        else:
+            await self._run(cwd, "update", task_id, "--status", status)
+
     async def list_tasks(self, cwd: str) -> list[BeadsTask]:
         """Return all open and in_progress tasks."""
         raw = await self._run(cwd, "list", "--status", "open,in_progress", "--json")

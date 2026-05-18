@@ -66,11 +66,25 @@ async def test_close_task_calls_correct_args(queue):
     mock_run.assert_called_once_with(CWD, "close", "bd-aaa1")
 
 
-async def test_reset_task_calls_correct_args(queue):
+async def test_set_status_open_calls_update(queue):
     mock_run = AsyncMock(return_value="")
     with patch.object(queue, "_run", new=mock_run):
-        await queue.reset_task(CWD, "bd-aaa1")
+        await queue.set_status(CWD, "bd-aaa1", "open")
     mock_run.assert_called_once_with(CWD, "update", "bd-aaa1", "--status", "open")
+
+
+async def test_set_status_in_progress_calls_update(queue):
+    mock_run = AsyncMock(return_value="")
+    with patch.object(queue, "_run", new=mock_run):
+        await queue.set_status(CWD, "bd-aaa1", "in_progress")
+    mock_run.assert_called_once_with(CWD, "update", "bd-aaa1", "--status", "in_progress")
+
+
+async def test_set_status_closed_calls_close(queue):
+    mock_run = AsyncMock(return_value="")
+    with patch.object(queue, "_run", new=mock_run):
+        await queue.set_status(CWD, "bd-aaa1", "closed")
+    mock_run.assert_called_once_with(CWD, "close", "bd-aaa1")
 
 
 async def test_add_task_calls_bd_q_and_returns_id(queue):

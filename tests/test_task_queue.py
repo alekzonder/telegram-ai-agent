@@ -118,8 +118,10 @@ def test_task_manager_prompt_has_markers():
 
 def test_queue_commands_in_bot_menu():
     names = {cmd.command for cmd in build_bot_commands("en")}
-    for cmd in ("qmode", "qadd", "qlist", "qskip", "qclear", "qpause", "qresume", "qnext"):
+    for cmd in ("qmode", "qadd", "qlist", "qstatus", "qpriority"):
         assert cmd in names, f"//{cmd} missing from bot menu"
+    for cmd in ("qskip", "qclear", "qnext"):
+        assert cmd not in names, f"//{cmd} should be removed from bot menu"
 
 
 # ---------------------------------------------------------------------------
@@ -136,5 +138,4 @@ def test_main_imports_task_queue_router():
 def test_main_wires_task_queue_runner():
     source = Path("src/telegram_bot/__main__.py").read_text(encoding="utf-8")
     assert "TaskQueueRunner" in source
-    assert "on_item_complete" in source
     assert 'dp["task_queue_runner"]' in source

@@ -51,11 +51,8 @@ PUBLIC_BOT_COMMANDS: tuple[LocalizedBotCommand, ...] = (
     LocalizedBotCommand("qmode", "Режим очереди задач вкл/выкл", "Enable/disable task queue mode"),
     LocalizedBotCommand("qadd", "Добавить задачу в очередь", "Add task to queue"),
     LocalizedBotCommand("qlist", "Показать очередь задач", "List task queue"),
-    LocalizedBotCommand("qskip", "Пропустить следующую задачу", "Skip next task"),
-    LocalizedBotCommand("qclear", "Очистить очередь задач", "Clear task queue"),
-    LocalizedBotCommand("qpause", "Приостановить очередь", "Pause task queue"),
-    LocalizedBotCommand("qresume", "Возобновить очередь", "Resume task queue"),
-    LocalizedBotCommand("qnext", "Запустить следующую задачу", "Run next task"),
+    LocalizedBotCommand("qstatus", "Изменить статус задачи", "Change task status"),
+    LocalizedBotCommand("qpriority", "Изменить приоритет задачи", "Change task priority"),
 )
 
 

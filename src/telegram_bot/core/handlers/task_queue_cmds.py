@@ -90,7 +90,7 @@ async def handle_qlist(
     for task in tasks:
         marker = "⚙️" if task.status == "in_progress" else "•"
         preview = task.title[:60] + ("…" if len(task.title) > 60 else "")
-        lines.append(f"{marker} [{task.id}] {preview}")
+        lines.append(f"{marker} [{task.id}] [{task.status}] {preview}")
     await message.answer("\n".join(lines))
 
 

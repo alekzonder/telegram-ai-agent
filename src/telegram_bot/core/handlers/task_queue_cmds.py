@@ -16,9 +16,18 @@ logger = logging.getLogger(__name__)
 router = Router(name="task_queue")
 
 
-def _parse_qadd_text(text: str) -> str:
+def _parse_qadd_text(text: str) -> tuple[str, int]:
+    """Return (task_text, priority). Priority defaults to 2 if not specified."""
     parts = text.split(maxsplit=1)
-    return parts[1].strip() if len(parts) > 1 else ""
+    if len(parts) < 2:
+        return "", 2
+    body = parts[1].strip()
+    # Check for optional p<N> prefix (p0-p4 only, must be followed by a space and more text)
+    if len(body) >= 3 and body[0] == "p" and body[1].isdigit() and body[2] == " ":
+        priority = int(body[1])
+        if 0 <= priority <= 4:
+            return body[3:].strip(), priority
+    return body, 2
 
 
 @router.message(Command("qadd"))
@@ -30,15 +39,15 @@ async def handle_qadd(
     cwd = task_queue_runner.get_cwd(key)
 
     raw_text = message.text or message.caption or ""
-    task_text = _parse_qadd_text(raw_text)
+    task_text, priority = _parse_qadd_text(raw_text)
 
     if not task_text:
-        await message.answer("Укажи текст задачи: /qadd <текст задачи>")
+        await message.answer("Укажи текст задачи: /qadd [p0-p4] <текст задачи>")
         return
 
-    task_id = await task_queue_runner._beads_queue.add_task(cwd, task_text)
+    task_id = await task_queue_runner._beads_queue.add_task(cwd, task_text, priority=priority)
     if task_id:
-        await message.answer(f"Задача добавлена [{task_id}]: {task_text[:80]}")
+        await message.answer(f"Задача добавлена [{task_id}] [p{priority}]: {task_text[:80]}")
     else:
         await message.answer("Не удалось добавить задачу (bd вернул пустой ответ).")
 
@@ -90,7 +99,7 @@ async def handle_qlist(
     for task in tasks:
         marker = "⚙️" if task.status == "in_progress" else "•"
         preview = task.title[:60] + ("…" if len(task.title) > 60 else "")
-        lines.append(f"{marker} [{task.id}] [{task.status}] {preview}")
+        lines.append(f"{marker} [{task.id}] [p{task.priority}] [{task.status}] {preview}")
     await message.answer("\n".join(lines))
 
 
@@ -125,6 +134,28 @@ async def handle_qclear(
         await task_queue_runner._beads_queue.close_task(cwd, task.id)
 
     await message.answer(f"Очередь очищена ({len(open_tasks)} задач закрыто).")
+
+
+@router.message(Command("qpriority"))
+async def handle_qpriority(
+    message: Message,
+    task_queue_runner: TaskQueueRunner,
+) -> None:
+    key = channel_key(message)
+    cwd = task_queue_runner.get_cwd(key)
+
+    raw_text = message.text or ""
+    parts = raw_text.split(maxsplit=2)
+    if len(parts) < 3 or not parts[2].isdigit() or not (0 <= int(parts[2]) <= 4):
+        await message.answer(
+            "Использование: /qpriority <id> <0-4>\n(0=critical, 1=high, 2=medium, 3=low, 4=backlog)"
+        )
+        return
+
+    task_id = parts[1].strip()
+    priority = int(parts[2])
+    await task_queue_runner._beads_queue.set_priority(cwd, task_id, priority)
+    await message.answer(f"Приоритет задачи [{task_id}] установлен: p{priority}")
 
 
 @router.message(Command("qnext"))

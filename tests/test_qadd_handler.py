@@ -9,9 +9,25 @@ from telegram_bot.core.handlers.task_queue_cmds import (
 
 
 def test_parse_qadd_text_strips_command():
-    assert _parse_qadd_text("/qadd do the thing") == "do the thing"
-    assert _parse_qadd_text("/qadd   spaces  ") == "spaces"
-    assert _parse_qadd_text("/qadd") == ""
+    assert _parse_qadd_text("/qadd do the thing") == ("do the thing", 2)
+    assert _parse_qadd_text("/qadd   spaces  ") == ("spaces", 2)
+    assert _parse_qadd_text("/qadd") == ("", 2)
+
+
+def test_parse_qadd_text_with_priority_prefix():
+    assert _parse_qadd_text("/qadd p0 Critical bug") == ("Critical bug", 0)
+    assert _parse_qadd_text("/qadd p1 Important task") == ("Important task", 1)
+    assert _parse_qadd_text("/qadd p4 Someday maybe") == ("Someday maybe", 4)
+
+
+def test_parse_qadd_text_invalid_priority_treated_as_text():
+    assert _parse_qadd_text("/qadd p5 oops") == ("p5 oops", 2)
+    assert _parse_qadd_text("/qadd p-1 nope") == ("p-1 nope", 2)
+    assert _parse_qadd_text("/qadd p9 too high") == ("p9 too high", 2)
+
+
+def test_parse_qadd_text_priority_alone_is_treated_as_text():
+    assert _parse_qadd_text("/qadd p0") == ("p0", 2)
 
 
 def test_router_has_all_queue_commands():
@@ -22,6 +38,6 @@ def test_router_has_all_queue_commands():
             cb = getattr(f, "callback", f)
             if hasattr(cb, "commands"):
                 command_names.update(cb.commands)
-    expected = {"qadd", "qmode", "qlist", "qskip", "qclear", "qpause", "qresume", "qnext"}
+    expected = {"qadd", "qmode", "qlist", "qskip", "qclear", "qpause", "qresume", "qnext", "qpriority"}
     missing = expected - command_names
     assert not missing, f"Missing commands: {missing}"

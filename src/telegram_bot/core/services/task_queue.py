@@ -79,6 +79,9 @@ class BeadsQueue:
     async def close_task(self, cwd: str, task_id: str) -> None:
         await self._run(cwd, "close", task_id)
 
+    async def set_priority(self, cwd: str, task_id: str, priority: int) -> None:
+        await self._run(cwd, "update", task_id, "--priority", str(priority))
+
     async def add_task(self, cwd: str, text: str, priority: int = 2) -> str:
         """Create task via `bd q`, return the new task ID."""
         return await self._run(cwd, "q", text, "-p", str(priority))
@@ -216,8 +219,7 @@ class TaskQueueRunner:
 
     async def _reset_session(self, channel_key: object) -> None:
         if (
-            self._tmux_manager is not None
-            and self._tmux_manager.is_active(channel_key)  # type: ignore[attr-defined]
+            self._tmux_manager is not None and self._tmux_manager.is_active(channel_key)  # type: ignore[attr-defined]
         ):
             await self._tmux_manager.clear_context(  # type: ignore[attr-defined]
                 channel_key, self._session_manager

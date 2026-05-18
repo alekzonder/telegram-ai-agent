@@ -104,3 +104,10 @@ async def test_list_tasks_returns_empty_on_empty_output(queue):
     with patch.object(queue, "_run", new=AsyncMock(return_value="")):
         result = await queue.list_tasks(CWD)
     assert result == []
+
+
+async def test_set_priority_calls_correct_args(queue):
+    mock_run = AsyncMock(return_value="")
+    with patch.object(queue, "_run", new=mock_run):
+        await queue.set_priority(CWD, "bd-aaa1", 0)
+    mock_run.assert_called_once_with(CWD, "update", "bd-aaa1", "--priority", "0")
